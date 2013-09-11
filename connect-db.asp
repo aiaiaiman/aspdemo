@@ -1,15 +1,14 @@
 	<%	
-		
 		Dim oConn, oRs
 		Dim qry, connectstr
 		Dim db_name, db_username, db_userpassword
 
 		db_server = "localhost"
-		db_name = "webshaper"
+		db_name = "ws2"
 		db_username = "root"
 		db_userpassword = "root"
-		fieldname = "username"
-		tablename = "users"
+		fieldname = "level2"
+		tablename = "taxonomy"
 
 		connectstr = "Driver={MySQL ODBC 5.2 ANSI Driver};SERVER=" & db_server & ";DATABASE=" & db_name & ";UID=" & db_username & ";PWD=" & db_userpassword
 
@@ -22,6 +21,7 @@
 
 		qry = "SELECT * FROM " & tablename
 
+		'Executing the SQL query
 		Set oRS = oConn.Execute(qry)
 
 		response.write "<blockquote>"
