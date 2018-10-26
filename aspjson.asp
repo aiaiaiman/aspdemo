@@ -1,23 +1,42 @@
 <%
-'June 2013 - Version 1.1 by Gerrit van Kuipers
+'Februari 2014 - Version 1.17 by Gerrit van Kuipers
 Class aspJSON
 	Public data
 	Private p_JSONstring
-	Private p_datatype
-	private aj_in_string, aj_in_escape, aj_i_tmp, aj_char_tmp, aj_s_tmp, aj_line_tmp, aj_line, aj_lines, aj_currentlevel, aj_currentkey, aj_currentvalue, aj_newlabel
+	private aj_in_string, aj_in_escape, aj_i_tmp, aj_char_tmp, aj_s_tmp, aj_line_tmp, aj_line, aj_lines, aj_currentlevel, aj_currentkey, aj_currentvalue, aj_newlabel, aj_XmlHttp, aj_RegExp, aj_colonfound
 
 	Private Sub Class_Initialize()
 		Set data = Collection()
-		p_datatype = "{}"
+
+	    Set aj_RegExp = new regexp
+	    aj_RegExp.Pattern = "\s{0,}(\S{1}[\s,\S]*\S{1})\s{0,}"
+	    aj_RegExp.Global = False
+	    aj_RegExp.IgnoreCase = True
+	    aj_RegExp.Multiline = True
 	End Sub
 
 	Private Sub Class_Terminate()
 		Set data = Nothing
+	    Set aj_RegExp = Nothing
 	End Sub
 
-	Public Function loadJSON(strInput)
-		if len(trim(strInput)) = 0 then Err.Raise 1, "loadJSON Error", "No data to load."
-		p_JSONstring = CleanUpJSONstring(Trim(strInput))
+	Public Sub loadJSON(inputsource)
+		inputsource = aj_MultilineTrim(inputsource)
+		If Len(inputsource) = 0 Then Err.Raise 1, "loadJSON Error", "No data to load."
+		
+		select case Left(inputsource, 1)
+			case "{", "["
+			case else
+				Set aj_XmlHttp = Server.CreateObject("Msxml2.ServerXMLHTTP")
+				aj_XmlHttp.open "GET", inputsource, False
+				aj_XmlHttp.setRequestHeader "Content-Type", "text/json"
+				aj_XmlHttp.setRequestHeader "CharSet", "UTF-8"
+				aj_XmlHttp.Send
+				inputsource = aj_XmlHttp.responseText
+				set aj_XmlHttp = Nothing
+		end select
+
+		p_JSONstring = CleanUpJSONstring(inputsource)
 		aj_lines = Split(p_JSONstring, Chr(13) & Chr(10))
 
 		Dim level(99)
@@ -29,6 +48,7 @@ Class aspJSON
 			If Instr(aj_line, ":") > 0 Then
 				aj_in_string = False
 				aj_in_escape = False
+				aj_colonfound = False
 				For aj_i_tmp = 1 To Len(aj_line)
 					If aj_in_escape Then
 						aj_in_escape = False
@@ -37,9 +57,10 @@ Class aspJSON
 							Case """"
 								aj_in_string = Not aj_in_string
 							Case ":"
-								If Not aj_in_escape Then
+								If Not aj_in_escape And Not aj_in_string Then
 									aj_currentkey = Left(aj_line, aj_i_tmp - 1)
 									aj_currentvalue = Mid(aj_line, aj_i_tmp + 1)
+									aj_colonfound = True
 									Exit For
 								End If
 							Case "\"
@@ -47,8 +68,10 @@ Class aspJSON
 						End Select
 					End If
 				Next
-				aj_currentkey = aj_Strip(aj_JSONDecode(aj_currentkey), """")
-				If Not level(aj_currentlevel).exists(aj_currentkey) Then level(aj_currentlevel).Add aj_currentkey, ""
+				if aj_colonfound then
+					aj_currentkey = aj_Strip(aj_JSONDecode(aj_currentkey), """")
+					If Not level(aj_currentlevel).exists(aj_currentkey) Then level(aj_currentlevel).Add aj_currentkey, ""
+				end if
 			End If
 			If right(aj_line,1) = "{" Or right(aj_line,1) = "[" Then
 				If Len(aj_currentkey) = 0 Then aj_currentkey = level(aj_currentlevel).Count
@@ -59,14 +82,14 @@ Class aspJSON
 			ElseIf right(aj_line,1) = "}" Or right(aj_line,1) = "]" or right(aj_line,2) = "}," Or right(aj_line,2) = "]," Then
 				aj_currentlevel = aj_currentlevel - 1
 			ElseIf Len(Trim(aj_line)) > 0 Then
-				if Len(aj_currentvalue) = 0 Then aj_currentvalue = getJSONValue(aj_line)
+				if Len(aj_currentvalue) = 0 Then aj_currentvalue = aj_line
 				aj_currentvalue = getJSONValue(aj_currentvalue)
 
 				If Len(aj_currentkey) = 0 Then aj_currentkey = level(aj_currentlevel).Count
 				level(aj_currentlevel).Item(aj_currentkey) = aj_currentvalue
 			End If
 		Next
-	End Function
+	End Sub
 
 	Public Function Collection()
 		set Collection = Server.CreateObject("Scripting.Dictionary")
@@ -81,7 +104,6 @@ Class aspJSON
 
 	Private Function CleanUpJSONstring(aj_originalstring)
 		aj_originalstring = Replace(aj_originalstring, Chr(13) & Chr(10), "")
-		p_datatype = Left(aj_originalstring, 1) & Right(aj_originalstring, 1)
 		aj_originalstring = Mid(aj_originalstring, 2, Len(aj_originalstring) - 2)
 		aj_in_string = False : aj_in_escape = False : aj_s_tmp = ""
 		For aj_i_tmp = 1 To Len(aj_originalstring)
@@ -91,7 +113,7 @@ Class aspJSON
 				aj_s_tmp = aj_s_tmp & aj_char_tmp
 			Else
 				Select Case aj_char_tmp
-					Case "\" : aj_in_escape = True
+					Case "\" : aj_s_tmp = aj_s_tmp & aj_char_tmp : aj_in_escape = True
 					Case """" : aj_s_tmp = aj_s_tmp & aj_char_tmp : aj_in_string = Not aj_in_string
 					Case "{", "["
 						aj_s_tmp = aj_s_tmp & aj_char_tmp & aj_InlineIf(aj_in_string, "", Chr(13) & Chr(10))
@@ -107,7 +129,7 @@ Class aspJSON
 		aj_s_tmp = split(aj_s_tmp, Chr(13) & Chr(10))
 		For Each aj_line_tmp In aj_s_tmp
 			aj_line_tmp = replace(replace(aj_line_tmp, chr(10), ""), chr(13), "")
-			CleanUpJSONstring = CleanUpJSONstring & Trim(aj_line_tmp) & Chr(13) & Chr(10)
+			CleanUpJSONstring = CleanUpJSONstring & aj_Trim(aj_line_tmp) & Chr(13) & Chr(10)
 		Next
 	End Function
 
@@ -138,8 +160,13 @@ Class aspJSON
 
 	Private JSONoutput_level
 	Public Function JSONoutput()
+		dim wrap_dicttype, aj_label
 		JSONoutput_level = 1
-		JSONoutput = Left(p_datatype, 1) & Chr(13) & Chr(10) & GetDict(data) & Right(p_datatype, 1)
+		wrap_dicttype = "[]"
+		For Each aj_label In data
+			 If Not aj_IsInt(aj_label) Then wrap_dicttype = "{}"
+		Next
+		JSONoutput = Left(wrap_dicttype, 1) & Chr(13) & Chr(10) & GetDict(data) & Right(wrap_dicttype, 1)
 	End Function
 
 	Private Function GetDict(objDict)
@@ -151,27 +178,26 @@ Class aspJSON
 					
 					aj_dicttype = "[]"
 					For Each aj_label In objDict.Item(aj_item).Keys
-						 If Not IsInt(aj_label) Then aj_dicttype = "{}"
+						 If Not aj_IsInt(aj_label) Then aj_dicttype = "{}"
 					Next
-
-					If IsInt(aj_item) Then
-						GetDict = GetDict & Left(aj_dicttype,1) & Chr(13) & Chr(10)
+					If aj_IsInt(aj_item) Then
+						GetDict = GetDict & (Left(aj_dicttype,1) & Chr(13) & Chr(10))
 					Else
-						GetDict = GetDict & """" & aj_JSONEncode(aj_item) & """" & ": " & Left(aj_dicttype,1) & Chr(13) & Chr(10)
+						GetDict = GetDict & ("""" & aj_JSONEncode(aj_item) & """" & ": " & Left(aj_dicttype,1) & Chr(13) & Chr(10))
 					End If
 					JSONoutput_level = JSONoutput_level + 1
 					
 					aj_keyvals = objDict.Keys
-					GetDict = GetDict & GetSubDict(objDict.Item(aj_item)) & Space(JSONoutput_level * 4) & Right(aj_dicttype,1) & aj_InlineIf(aj_item = aj_keyvals(objDict.Count - 1),"" , ",") & Chr(13) & Chr(10)
+					GetDict = GetDict & (GetSubDict(objDict.Item(aj_item)) & Space(JSONoutput_level * 4) & Right(aj_dicttype,1) & aj_InlineIf(aj_item = aj_keyvals(objDict.Count - 1),"" , ",") & Chr(13) & Chr(10))
 				Case Else
 					aj_keyvals =  objDict.Keys
-					GetDict = GetDict & Space(JSONoutput_level * 4) & aj_InlineIf(IsInt(aj_item), "", """" & aj_JSONEncode(aj_item) & """: ") & WriteValue(objDict.Item(aj_item)) & aj_InlineIf(aj_item = aj_keyvals(objDict.Count - 1),"" , ",") & Chr(13) & Chr(10)
+					GetDict = GetDict & (Space(JSONoutput_level * 4) & aj_InlineIf(aj_IsInt(aj_item), "", """" & aj_JSONEncode(aj_item) & """: ") & WriteValue(objDict.Item(aj_item)) & aj_InlineIf(aj_item = aj_keyvals(objDict.Count - 1),"" , ",") & Chr(13) & Chr(10))
 			End Select
 		Next
 	End Function
 
-	Private Function IsInt(val)
-		IsInt = (TypeName(val) = "Integer" Or TypeName(val) = "Long")
+	Private Function aj_IsInt(val)
+		aj_IsInt = (TypeName(val) = "Integer" Or TypeName(val) = "Long")
 	End Function
 
 	Private Function GetSubDict(objSubDict)
@@ -221,5 +247,16 @@ Class aspJSON
 		If Right(val, 1) = stripper Then val = Left(val, Len(val) - 1)
 		aj_Strip = val
 	End Function
+
+	Private Function aj_MultilineTrim(TextData)
+		aj_MultilineTrim = aj_RegExp.Replace(TextData, "$1")
+	End Function
+
+	private function aj_Trim(val)
+		aj_Trim = Trim(val)
+		Do While Left(aj_Trim, 1) = Chr(9) : aj_Trim = Mid(aj_Trim, 2) : Loop
+		Do While Right(aj_Trim, 1) = Chr(9) : aj_Trim = Left(aj_Trim, Len(aj_Trim) - 1) : Loop
+		aj_Trim = Trim(aj_Trim)
+	end function
 End Class
 %>
