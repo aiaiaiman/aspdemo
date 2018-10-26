@@ -78,7 +78,7 @@
     include file="read-json.asp"
   </blockquote>
 
-  <p><small>Arghh! Screw above codes. I couldn't make it work by calling external JSON file. (KIV'd)</small></p>
+  <p><small>Yay! I loaded that json file! It works! (:</small></p>
 </div>
 
 <div class="pure-u-1-3">

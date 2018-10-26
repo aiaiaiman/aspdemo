@@ -91,6 +91,18 @@ Class aspJSON
 		Next
 	End Sub
 
+	Public Sub loadFromFile(filename)
+		Dim fs, textStream
+
+		set fs=Server.CreateObject( "Scripting.FileSystemObject" )
+		set stream = fs.OpenTextFile( Server.MapPath(filename) , 1, false )
+
+		content = stream.ReadAll
+		stream.close
+
+		loadJSON(content)
+	End Sub
+
 	Public Function Collection()
 		set Collection = Server.CreateObject("Scripting.Dictionary")
 	End Function
