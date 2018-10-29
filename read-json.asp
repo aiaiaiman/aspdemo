@@ -2,8 +2,8 @@
 <%
     Set oJSON = New aspJSON
 
-    'Load JSON string
-    oJSON.loadJSON(jsonstring)
+    'Load JSON from file
+    oJSON.loadFromFile("json-example.json")
 
     'Get single value
     Response.Write oJSON.data("firstName") & "<br>"
